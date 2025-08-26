@@ -1,0 +1,9 @@
+.env-mailserver
+compose.yaml
+config.inc.php
+mail-data/
+mail-logs/
+mail-state/
+postgresql/
+config/
+certs/

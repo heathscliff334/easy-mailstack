@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ---------------------------
+  # Docker Mailserver
+  # ---------------------------
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:15.1.0
+    container_name: mailserver
+    hostname: mail.domain.com
+    restart: always
+    env_file: .env-mailserver
+    ports:
+      - "25:25"
+      - "143:143"
+      - "465:465"
+      - "587:587"
+      - "993:993"
+    volumes:
+      - ./mail-data:/var/mail
+      - ./mail-state:/var/mail-state
+      - ./mail-logs:/var/log/mail
+      - ./config/:/tmp/docker-mailserver/
+      # SSL certificates - uncomment when certificates are ready
+      # - ./certs:/etc/letsencrypt
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+    networks:
+      - mailstack
+    healthcheck:
+      test: ["CMD", "ss", "-lntp", "|", "grep", ":25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------
+  # Roundcube
+  # ---------------------------
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: roundcube
+    restart: always
+    depends_on:
+      - mailserver
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: pgsql # your database type
+      ROUNDCUBEMAIL_DB_HOST: <IP ADDRESS / HOST>
+      ROUNDCUBEMAIL_DB_NAME: roundcubemail
+      ROUNDCUBEMAIL_DB_USER: roundcube
+      ROUNDCUBEMAIL_DB_PASSWORD: <PASSWORD>
+      ROUNDCUBEMAIL_DEFAULT_HOST: mailserver
+      ROUNDCUBEMAIL_DEFAULT_PORT: 143
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://mailserver
+      ROUNDCUBEMAIL_SMTP_PORT: 587
+      # Additional recommended settings
+      ROUNDCUBEMAIL_SKIN: elastic
+      ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE: 25M
+      ROUNDCUBEMAIL_ASPELL_ENABLED: 1
+    ports:
+      - "8080:80"
+    volumes:
+      - roundcube_data:/var/www/html
+      - ./config.inc.php:/var/www/html/config/config.inc.php:ro
+    networks:
+      - mailstack
+
+networks:
+  mailstack:
+    driver: bridge
+  # Add your existing postgres network here once you tell me the name
+  # postgres_network:
+  #   external: true
+  #   name: your_actual_network_name
+
+volumes:
+  roundcube_data:

@@ -1,0 +1,102 @@
+<?php
+
+/*
+ +-----------------------------------------------------------------------+
+ | Roundcube Webmail configuration file                                 |
+ +-----------------------------------------------------------------------+
+ */
+
+// Database connection string (DSN)
+$config['db_dsnw'] = 'pgsql://<USER>:<PASSWORD>@<IP>:<POR>T/roundcubemail';
+
+// IMAP host (default is localhost)
+$config['default_host'] = 'mailserver:143';
+
+// SMTP server host (for sending mails)
+$config['smtp_server'] = 'mailserver';
+$config['smtp_port'] = 25;
+$config['smtp_user'] = '%u'; // use the current username for SMTP authentication
+$config['smtp_pass'] = '%p'; // use the current password for SMTP authentication
+
+// SMTP connection timeout, in seconds. Default is 0 (no limit)
+$config['smtp_timeout'] = 10;
+
+// provide an URL where a user can get support for this Roundcube installation
+// PLEASE DO NOT LINK TO THE ROUNDCUBE.NET WEBSITE HERE!
+$config['support_url'] = '';
+
+// This key is used to encrypt the users imap password which is stored
+// in the session record (and the client cookie if remember password is enabled).
+// Please provide a string of exactly 24 chars.
+$config['des_key'] = 'your24characterlongkey!!';
+
+// List of active plugins (in plugins/ directory)
+$config['plugins'] = array();
+
+// skin name: folder from skins/
+$config['skin'] = 'elastic';
+
+// Disable spellchecking
+$config['enable_spellcheck'] = false;
+
+// Set the spell checking engine. Possible values:
+// - 'googie'  - the default (also used for connecting to Nox Spell Server, see 'spellcheck_uri' setting)
+// - 'pspell'  - requires the PHP Pspell module and aspell installed
+// - 'enchant' - requires the PHP Enchant module
+// - 'atd'     - install your own After the Deadline server or check with the people at http://www.afterthedeadline.com before using their API
+$config['spellcheck_engine'] = 'atd';
+
+// automatically create the above listed default folders on first login
+$config['create_default_folders'] = true;
+
+// Disable HTML editor for compose messages
+// 0 - disabled, 1 - always enabled, 2 - enabled but allow to disable, 3 - disabled but allow to enable
+$config['htmleditor'] = 2;
+
+// save compose message every 300 seconds (5min)
+$config['draft_autosave'] = 300;
+
+// Maximum filesize for attachments in bytes
+$config['max_message_size'] = '25M';
+
+// Session lifetime in minutes
+$config['session_lifetime'] = 10;
+
+// check all folders for recent messages (not just INBOX)
+$config['check_all_folders'] = false;
+
+// Display remote inline images
+// 0 - Never, always ask
+// 1 - Ask if sender is not in address book
+// 2 - Always allow
+$config['show_images'] = 0;
+
+// Compose in new window
+$config['compose_extwin'] = false;
+
+// Default font size for HTML editor (between 1-7)
+$config['default_font_size'] = 3;
+
+// Show pretty dates as standard
+$config['prettydate'] = true;
+
+// Allow browser-autocompletion on login form.
+// 0 - disabled, 1 - username and password, 2 - only username
+$config['login_autocomplete'] = 0;
+
+// If users are allowed to change their username on the preferences page
+$config['dont_override'] = array('default_host');
+
+// Log IMAP conversation to <log_dir>/imap or to syslog
+$config['imap_debug'] = true;
+
+// Log SMTP conversation to <log_dir>/smtp or to syslog  
+$config['smtp_debug'] = true;
+
+// Log SQL queries to <log_dir>/sql or to syslog
+$config['sql_debug'] = false;
+
+// Log successful/failed logins to <log_dir>/userlogins or to syslog
+$config['log_logins'] = false;
+
+?>
