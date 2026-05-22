@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve the directory where this script lives (for calling sibling scripts)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve the directory where the real script lives (follows symlinks)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 usage() {
   cat <<USAGE
