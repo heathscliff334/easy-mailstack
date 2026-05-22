@@ -10,6 +10,10 @@ Usage:
   ./easy_mailstack.sh --delete-email --email <address>
   ./easy_mailstack.sh --deactivate-email --email <address>
   ./easy_mailstack.sh --deactivate-email --email <address> --reactivate
+  ./easy_mailstack.sh --set-quota --email <address> --size <quota>
+  ./easy_mailstack.sh --del-quota --email <address>
+
+Quota sizes: use M for megabytes, G for gigabytes (e.g. 500M, 1G, 10G)
 USAGE
   exit 1
 }
@@ -21,8 +25,11 @@ SEND_TEST=false
 DELETE_EMAIL=false
 DEACTIVATE_EMAIL=false
 REACTIVATE=false
+SET_QUOTA=false
+DEL_QUOTA=false
 EMAIL_ARG=""
 FROM_EMAIL=""  # dynamic – supply with --from
+SIZE_ARG=""    # quota size – supply with --size
 
 # Parse options
 while [[ $# -gt 0 ]]; do
@@ -56,12 +63,24 @@ while [[ $# -gt 0 ]]; do
       REACTIVATE=true
       shift
       ;;
+    --set-quota)
+      SET_QUOTA=true
+      shift
+      ;;
+    --del-quota)
+      DEL_QUOTA=true
+      shift
+      ;;
     --email)
       EMAIL_ARG="$2"
       shift 2
       ;;
     --from)
       FROM_EMAIL="$2"
+      shift 2
+      ;;
+    --size)
+      SIZE_ARG="$2"
       shift 2
       ;;
     -h|--help)
@@ -81,7 +100,7 @@ fetch_emails() {
   }
 }
 
-if [[ -z "$DOMAIN" && ! $LIST_EMAIL && ! $SEND_TEST && ! $DELETE_EMAIL && ! $DEACTIVATE_EMAIL ]]; then
+if [[ -z "$DOMAIN" && ! $LIST_EMAIL && ! $SEND_TEST && ! $DELETE_EMAIL && ! $DEACTIVATE_EMAIL && ! $SET_QUOTA && ! $DEL_QUOTA ]]; then
   usage
 fi
 
@@ -144,6 +163,53 @@ if $DEACTIVATE_EMAIL; then
     echo "Email account '$EMAIL_ARG' has been deactivated (send & receive restricted)."
     echo "To reactivate, run: $0 --deactivate-email --email $EMAIL_ARG --reactivate"
   fi
+  exit 0
+fi
+
+if $SET_QUOTA; then
+  if [[ -z "$EMAIL_ARG" ]]; then
+    echo "Error: --email is required when using --set-quota"
+    exit 1
+  fi
+  if [[ -z "$SIZE_ARG" ]]; then
+    echo "Error: --size is required when using --set-quota (e.g. 500M, 1G, 10G)"
+    exit 1
+  fi
+  # Validate size format
+  if [[ ! "$SIZE_ARG" =~ ^[0-9]+(M|G|T)$ ]]; then
+    echo "Error: Invalid quota size '$SIZE_ARG'. Use format like 500M, 1G, or 10G."
+    exit 1
+  fi
+  # Verify the account exists
+  if ! fetch_emails | grep -qE "^${EMAIL_ARG} "; then
+    echo "Error: Email account '$EMAIL_ARG' does not exist."
+    exit 1
+  fi
+  echo "Setting quota for $EMAIL_ARG to $SIZE_ARG ..."
+  docker exec -i mailserver setup quota set "$EMAIL_ARG" "$SIZE_ARG" 2>/dev/null && \
+    echo "Quota for '$EMAIL_ARG' has been set to $SIZE_ARG." || {
+    echo "Error: Failed to set quota. Make sure ENABLE_QUOTAS=1 is set in your .env-mailserver."
+    exit 1
+  }
+  exit 0
+fi
+
+if $DEL_QUOTA; then
+  if [[ -z "$EMAIL_ARG" ]]; then
+    echo "Error: --email is required when using --del-quota"
+    exit 1
+  fi
+  # Verify the account exists
+  if ! fetch_emails | grep -qE "^${EMAIL_ARG} "; then
+    echo "Error: Email account '$EMAIL_ARG' does not exist."
+    exit 1
+  fi
+  echo "Removing quota for $EMAIL_ARG ..."
+  docker exec -i mailserver setup quota del "$EMAIL_ARG" 2>/dev/null && \
+    echo "Quota for '$EMAIL_ARG' has been removed (unlimited)." || {
+    echo "Error: Failed to remove quota."
+    exit 1
+  }
   exit 0
 fi
 
