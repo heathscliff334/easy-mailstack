@@ -16,6 +16,7 @@ Usage:
   $0 --deactivate-email --email <address> --reactivate
   $0 --set-quota --email <address> --size <quota>
   $0 --del-quota --email <address>
+  $0 --import-email --email <address> --source-host <host> [--source-user <user>] [--source-port <port>] [--source-ssl] [--dry-run]
 
 Quota sizes: use M for megabytes, G for gigabytes (e.g. 500M, 1G, 10G)
 USAGE
@@ -32,9 +33,15 @@ DEACTIVATE_EMAIL=false
 REACTIVATE=false
 SET_QUOTA=false
 DEL_QUOTA=false
+IMPORT_EMAIL=false
+DRY_RUN=false
 EMAIL_ARG=""
-FROM_EMAIL=""  # dynamic – supply with --from
-SIZE_ARG=""    # quota size – supply with --size
+FROM_EMAIL=""      # dynamic – supply with --from
+SIZE_ARG=""        # quota size – supply with --size
+SOURCE_HOST=""     # source IMAP host for migration
+SOURCE_USER=""     # source IMAP user (defaults to --email)
+SOURCE_PORT=""     # source IMAP port
+SOURCE_SSL=false   # use SSL for source connection
 
 # Parse options
 while [[ $# -gt 0 ]]; do
@@ -92,6 +99,30 @@ while [[ $# -gt 0 ]]; do
       SIZE_ARG="$2"
       shift 2
       ;;
+    --import-email)
+      IMPORT_EMAIL=true
+      shift
+      ;;
+    --source-host)
+      SOURCE_HOST="$2"
+      shift 2
+      ;;
+    --source-user)
+      SOURCE_USER="$2"
+      shift 2
+      ;;
+    --source-port)
+      SOURCE_PORT="$2"
+      shift 2
+      ;;
+    --source-ssl)
+      SOURCE_SSL=true
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
     -h|--help)
       usage
       ;;
@@ -112,7 +143,8 @@ fetch_emails() {
 # Show usage if no action was specified
 if [[ "$LIST_EMAIL" == "false" && "$SEND_TEST" == "false" && "$CREATE_EMAIL" == "false" \
    && "$DELETE_EMAIL" == "false" && "$DEACTIVATE_EMAIL" == "false" \
-   && "$SET_QUOTA" == "false" && "$DEL_QUOTA" == "false" && -z "$DOMAIN" ]]; then
+   && "$SET_QUOTA" == "false" && "$DEL_QUOTA" == "false" \
+   && "$IMPORT_EMAIL" == "false" && -z "$DOMAIN" ]]; then
   usage
 fi
 
@@ -259,3 +291,110 @@ if $LIST_EMAIL; then
   exit 0
 fi
 
+if $IMPORT_EMAIL; then
+  # Check if imapsync is installed
+  if ! command -v imapsync &>/dev/null; then
+    echo "imapsync is not installed."
+    printf "Install it now? [Y/n]: "
+    read -r install_confirm
+    if [[ "$install_confirm" =~ ^[Nn]$ ]]; then
+      echo "Aborted. Install imapsync manually: apt install imapsync"
+      exit 1
+    fi
+    echo "Installing imapsync ..."
+    apt-get update -qq && apt-get install -y -qq imapsync || {
+      echo "Error: Failed to install imapsync."
+      exit 1
+    }
+    echo "imapsync installed successfully."
+  fi
+
+  # Validate required arguments
+  if [[ -z "$EMAIL_ARG" ]]; then
+    echo "Error: --email is required (the destination email on your server)"
+    exit 1
+  fi
+  if [[ -z "$SOURCE_HOST" ]]; then
+    echo "Error: --source-host is required (e.g. imap.hostinger.com)"
+    exit 1
+  fi
+
+  # Default source user to the same email address
+  [[ -z "$SOURCE_USER" ]] && SOURCE_USER="$EMAIL_ARG"
+
+  # Detect destination IMAP host from the mailserver container
+  DEST_HOST=$(docker exec -i mailserver hostname 2>/dev/null || echo "localhost")
+
+  # Prompt for passwords
+  echo "=== Email Migration ==="
+  echo "  Source: $SOURCE_USER @ $SOURCE_HOST"
+  echo "  Dest:   $EMAIL_ARG @ $DEST_HOST"
+  echo ""
+  read -s -p "Enter password for SOURCE ($SOURCE_USER on $SOURCE_HOST): " source_pass
+  echo ""
+  read -s -p "Enter password for DESTINATION ($EMAIL_ARG on your server): " dest_pass
+  echo ""
+  echo ""
+
+  # Build imapsync command
+  imapsync_cmd=(
+    imapsync
+    --host1 "$SOURCE_HOST"
+    --user1 "$SOURCE_USER"
+    --password1 "$source_pass"
+    --host2 "$DEST_HOST"
+    --user2 "$EMAIL_ARG"
+    --password2 "$dest_pass"
+    --automap
+    --addheader
+  )
+
+  # Source port
+  if [[ -n "$SOURCE_PORT" ]]; then
+    imapsync_cmd+=(--port1 "$SOURCE_PORT")
+  fi
+
+  # Source SSL
+  if $SOURCE_SSL; then
+    imapsync_cmd+=(--ssl1)
+    # Default port for SSL if not specified
+    if [[ -z "$SOURCE_PORT" ]]; then
+      imapsync_cmd+=(--port1 993)
+    fi
+  fi
+
+  # Destination is local, use port 143 without SSL
+  imapsync_cmd+=(--port2 143)
+
+  # Dry run mode
+  if $DRY_RUN; then
+    imapsync_cmd+=(--dry)
+    echo "[DRY RUN] No emails will actually be transferred."
+    echo ""
+  fi
+
+  echo "Starting migration..."
+  echo "Command: imapsync --host1 $SOURCE_HOST --user1 $SOURCE_USER --host2 $DEST_HOST --user2 $EMAIL_ARG [passwords hidden]"
+  echo "---"
+
+  "${imapsync_cmd[@]}" && {
+    echo ""
+    echo "=== Migration complete ==="
+    echo "Emails from '$SOURCE_USER' on '$SOURCE_HOST' have been imported to '$EMAIL_ARG'."
+    if ! $DRY_RUN; then
+      echo ""
+      echo "Tip: After updating MX records, run this command again to catch"
+      echo "     any emails that arrived during DNS propagation."
+    fi
+  } || {
+    echo ""
+    echo "Error: Migration failed. Check the output above for details."
+    echo "Common issues:"
+    echo "  - Wrong password"
+    echo "  - Wrong source host (try: imap.provider.com or mail.provider.com)"
+    echo "  - Source requires SSL (add --source-ssl)"
+    echo "  - Firewall blocking IMAP ports"
+    exit 1
+  }
+  exit 0
+fi
