@@ -26,11 +26,13 @@ Easily set up a **Mail Server** with **Roundcube Webmail** using Docker — with
 ├── compose.yaml            # Your main docker-compose file (ignored in Git)
 ├── compose.yaml_example    # Example compose file
 ├── config/                 # Custom mail server configs
+│   ├── postfix-main.cf     # Persistent Postfix overrides
 │   └── rspamd/override.d/  # Rspamd override configs, including daily send rate limit
 ├── config.inc.php          # Roundcube config (ignored in Git)
 ├── config.inc.php_example  # Example Roundcube config
 ├── create_email.sh         # Script to create email accounts
 ├── easy_mailstack.sh       # Management CLI for email accounts
+├── setup_dkim.sh           # Persistent DKIM helper
 ├── mail-data/              # Mail data storage (ignored in Git)
 ├── mail-logs/              # Log files (ignored in Git)
 ├── mail-state/             # Mail state data (ignored in Git)
@@ -195,6 +197,44 @@ easy-mailstack --set-quota --email user@example.com --size 500M
 easy-mailstack --del-quota --email user@example.com
 ```
 
+### Persist DKIM and Postfix TLS config
+
+Do not edit `/etc/opendkim` or run `postconf -e` inside the running container for permanent changes. Those edits can disappear after container recreation. This project mounts `./config` to `/tmp/docker-mailserver`, so persistent mailserver config belongs under `./config`.
+
+If DKIM was already fixed manually in the running container and DNS already points to that public key, copy the live private key into persistent config:
+
+```bash
+easy-mailstack --persist-live-dkim --domain laurenscodes.space
+docker compose restart mailserver
+```
+
+That keeps the current DNS TXT record valid and configures Rspamd to sign using:
+
+```text
+config/opendkim/keys/<domain>/mail.private
+config/rspamd/override.d/dkim_signing.conf
+```
+
+For a fresh DKIM setup, generate a new persistent key and then add the printed DNS TXT record:
+
+```bash
+easy-mailstack --setup-dkim --domain laurenscodes.space
+easy-mailstack --show-dkim-dns --domain laurenscodes.space
+docker compose restart mailserver
+```
+
+Outbound SMTP TLS is persisted in:
+
+```text
+config/postfix-main.cf
+```
+
+It enables opportunistic STARTTLS for outbound delivery:
+
+```text
+smtp_tls_security_level = may
+```
+
 ### Set daily SMTP send rate limit
 Sets the Rspamd authenticated-user daily send limit. The default is `1000` emails/day; use any positive integer for `N` emails/day:
 ```bash
@@ -270,6 +310,7 @@ MAIL_RATE_LIMIT_PER_DAY=1000
 ```
 
 `MAIL_RATE_LIMIT_PER_DAY` is used by the helper scripts as the default value; Rspamd uses `config/rspamd/override.d/ratelimit.conf`.
+DKIM signing is handled by Rspamd when these settings are used. Keep OpenDKIM disabled to avoid milter conflicts.
 
 Change the limit to any `N` emails/day:
 ```bash

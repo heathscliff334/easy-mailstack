@@ -6,9 +6,11 @@ mail-logs/
 mail-state/
 postgresql/
 config/*
+!config/postfix-main.cf
 !config/rspamd/
 config/rspamd/*
 !config/rspamd/override.d/
 config/rspamd/override.d/*
+!config/rspamd/override.d/dkim_signing.conf
 !config/rspamd/override.d/ratelimit.conf
 certs/

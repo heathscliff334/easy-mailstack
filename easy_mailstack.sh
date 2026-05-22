@@ -20,6 +20,9 @@ Usage:
   $0 --set-rate-limit [--limit <emails-per-day>]
   $0 --show-rate-limit
   $0 --del-rate-limit
+  $0 --persist-live-dkim --domain <domain> [--domain <domain> ...]
+  $0 --setup-dkim --domain <domain> [--domain <domain> ...]
+  $0 --show-dkim-dns [--domain <domain> ...]
   $0 --import-email --email <address> --source-host <host> [--source-user <user>] [--source-port <port>] [--source-ssl] [--dry-run]
 
 Quota sizes: use M for megabytes, G for gigabytes (e.g. 500M, 1G, 10G)
@@ -45,12 +48,16 @@ DEL_QUOTA=false
 SET_RATE_LIMIT=false
 SHOW_RATE_LIMIT=false
 DEL_RATE_LIMIT=false
+PERSIST_LIVE_DKIM=false
+SETUP_DKIM=false
+SHOW_DKIM_DNS=false
 IMPORT_EMAIL=false
 DRY_RUN=false
 EMAIL_ARG=""
 FROM_EMAIL=""      # dynamic – supply with --from
 SIZE_ARG=""        # quota size – supply with --size
 LIMIT_ARG=""       # emails/day – supply with --limit
+DKIM_DOMAINS=()
 SOURCE_HOST=""     # source IMAP host for migration
 SOURCE_USER=""     # source IMAP user (defaults to --email)
 SOURCE_PORT=""     # source IMAP port
@@ -62,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --domain)
       if [[ -n "${2-}" && ! "$2" =~ ^-- ]]; then
         DOMAIN="$2"
+        DKIM_DOMAINS+=("$2")
         shift 2
       else
         DOMAIN=""
@@ -110,6 +118,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --del-rate-limit)
       DEL_RATE_LIMIT=true
+      shift
+      ;;
+    --persist-live-dkim)
+      PERSIST_LIVE_DKIM=true
+      shift
+      ;;
+    --setup-dkim)
+      SETUP_DKIM=true
+      shift
+      ;;
+    --show-dkim-dns)
+      SHOW_DKIM_DNS=true
       shift
       ;;
     --email)
@@ -241,8 +261,33 @@ if [[ "$LIST_EMAIL" == "false" && "$SEND_TEST" == "false" && "$CREATE_EMAIL" == 
    && "$DELETE_EMAIL" == "false" && "$DEACTIVATE_EMAIL" == "false" \
    && "$SET_QUOTA" == "false" && "$DEL_QUOTA" == "false" \
    && "$SET_RATE_LIMIT" == "false" && "$SHOW_RATE_LIMIT" == "false" && "$DEL_RATE_LIMIT" == "false" \
+   && "$PERSIST_LIVE_DKIM" == "false" && "$SETUP_DKIM" == "false" && "$SHOW_DKIM_DNS" == "false" \
    && "$IMPORT_EMAIL" == "false" && -z "$DOMAIN" ]]; then
   usage
+fi
+
+if $PERSIST_LIVE_DKIM || $SETUP_DKIM || $SHOW_DKIM_DNS; then
+  if [[ ! -f "$SCRIPT_DIR/setup_dkim.sh" ]]; then
+    echo "Error: setup_dkim.sh not found in $SCRIPT_DIR"
+    exit 1
+  fi
+
+  if [[ ${#DKIM_DOMAINS[@]} -eq 0 && "$SHOW_DKIM_DNS" == "false" ]]; then
+    echo "Error: --domain is required for DKIM setup"
+    exit 1
+  fi
+
+  if $PERSIST_LIVE_DKIM; then
+    exec "$SCRIPT_DIR/setup_dkim.sh" persist-live "${DKIM_DOMAINS[@]}"
+  elif $SETUP_DKIM; then
+    exec "$SCRIPT_DIR/setup_dkim.sh" generate "${DKIM_DOMAINS[@]}"
+  else
+    if [[ ${#DKIM_DOMAINS[@]} -gt 0 ]]; then
+      exec "$SCRIPT_DIR/setup_dkim.sh" show-dns "${DKIM_DOMAINS[@]}"
+    else
+      exec "$SCRIPT_DIR/setup_dkim.sh" show-dns
+    fi
+  fi
 fi
 
 if $SET_RATE_LIMIT; then

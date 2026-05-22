@@ -1,0 +1,9 @@
+# Persistent Postfix overrides loaded by Docker Mailserver from /tmp/docker-mailserver/postfix-main.cf.
+# Keep outbound delivery opportunistically encrypted when the remote server supports STARTTLS.
+smtp_tls_security_level = may
+smtp_tls_loglevel = 1
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+
+# Offer STARTTLS for inbound SMTP when Docker Mailserver has a usable certificate configured.
+smtpd_tls_security_level = may
+smtpd_tls_loglevel = 1
