@@ -14,6 +14,7 @@ Easily set up a **Mail Server** with **Roundcube Webmail** using Docker — with
 - Persistent storage for mail data, logs, and PostgreSQL database.
 - Simple script to **create email accounts**.
 - **Management CLI** (`easy_mailstack.sh`) for listing, deleting, deactivating accounts, and managing quotas.
+- **Rspamd daily send rate limiting** for authenticated SMTP users (`1000 emails/day` by default, configurable to `N emails/day`).
 
 ---
 
@@ -25,6 +26,7 @@ Easily set up a **Mail Server** with **Roundcube Webmail** using Docker — with
 ├── compose.yaml            # Your main docker-compose file (ignored in Git)
 ├── compose.yaml_example    # Example compose file
 ├── config/                 # Custom mail server configs
+│   └── rspamd/override.d/  # Rspamd override configs, including daily send rate limit
 ├── config.inc.php          # Roundcube config (ignored in Git)
 ├── config.inc.php_example  # Example Roundcube config
 ├── create_email.sh         # Script to create email accounts
@@ -128,18 +130,22 @@ source ~/.bashrc
 
 Use the included script:
 ```bash
-# With a 1G quota
+# With a 1G quota and 1000 emails/day SMTP send limit
+./create_email.sh user@example.com password 1G 1000
+
+# With a 1G quota and no rate-limit change
 ./create_email.sh user@example.com password 1G
 
 # With unlimited quota (default)
 ./create_email.sh user@example.com password 0
 ./create_email.sh user@example.com password        # 0 is the default
 
-# Interactive mode (prompts for email, password, and quota)
+# Interactive mode (prompts for email, password, quota, and optional daily send limit)
 ./create_email.sh
 ```
 
 Quota sizes: use `M` for MB, `G` for GB, `T` for TB, or `0` for unlimited.
+Daily send limits are global per authenticated SMTP user. Passing the fourth argument updates the Rspamd limit for all authenticated users.
 
 ---
 
@@ -189,6 +195,29 @@ easy-mailstack --set-quota --email user@example.com --size 500M
 easy-mailstack --del-quota --email user@example.com
 ```
 
+### Set daily SMTP send rate limit
+Sets the Rspamd authenticated-user daily send limit. The default is `1000` emails/day; use any positive integer for `N` emails/day:
+```bash
+easy-mailstack --set-rate-limit --limit 1000
+easy-mailstack --set-rate-limit --limit 250
+```
+
+Check or remove the generated Rspamd override:
+```bash
+easy-mailstack --show-rate-limit
+easy-mailstack --del-rate-limit
+```
+
+After changing the rate limit, restart the mailserver:
+```bash
+docker compose restart mailserver
+```
+
+Verify Rspamd sees the config:
+```bash
+docker exec -it mailserver rspamadm configdump ratelimit
+```
+
 ---
 
 ## 📊 Enabling Quotas
@@ -213,6 +242,49 @@ To use quota management, you must enable quotas in your mailserver configuration
 
 ---
 
+## 🚦 Rspamd Daily Send Rate Limiting
+
+Rate limiting is enabled through Docker Mailserver's built-in Rspamd support. The repository includes:
+
+```text
+config/rspamd/override.d/ratelimit.conf
+```
+
+Default behavior:
+- `1000 emails/day` per authenticated SMTP user.
+- Recipient-counted: one message to 10 recipients consumes 10 from the bucket.
+- Uses Rspamd token-bucket behavior, so the limit refills continuously over one day.
+- Applies to authenticated outbound SMTP users through `selector = "user.lower"`.
+
+Recommended `.env-mailserver` settings:
+```env
+ENABLE_RSPAMD=1
+ENABLE_RSPAMD_REDIS=1
+RSPAMD_CHECK_AUTHENTICATED=1
+RSPAMD_GREYLISTING=0
+ENABLE_OPENDKIM=0
+ENABLE_OPENDMARC=0
+ENABLE_POLICYD_SPF=0
+ENABLE_AMAVIS=0
+MAIL_RATE_LIMIT_PER_DAY=1000
+```
+
+`MAIL_RATE_LIMIT_PER_DAY` is used by the helper scripts as the default value; Rspamd uses `config/rspamd/override.d/ratelimit.conf`.
+
+Change the limit to any `N` emails/day:
+```bash
+easy-mailstack --set-rate-limit --limit N
+docker compose restart mailserver
+```
+
+Example:
+```bash
+easy-mailstack --set-rate-limit --limit 500
+docker compose restart mailserver
+```
+
+---
+
 ## 🔐 SSL Certificates
 - Place your SSL certificates in the `certs/` directory.
 - Update the `compose.yaml` file to map them correctly.
@@ -227,6 +299,10 @@ DOMAIN=example.com
 HOSTNAME=mail.example.com
 POSTMASTER_ADDRESS=postmaster@example.com
 ENABLE_QUOTAS=1
+ENABLE_RSPAMD=1
+ENABLE_RSPAMD_REDIS=1
+RSPAMD_CHECK_AUTHENTICATED=1
+MAIL_RATE_LIMIT_PER_DAY=1000
 # Add more as needed
 ```
 
@@ -252,6 +328,11 @@ docker compose logs -f
 **Create new email with 1G quota:**
 ```bash
 ./create_email.sh newuser@example.com strongpassword 1G
+```
+
+**Create new email and set daily send limit to 1000 emails/day:**
+```bash
+./create_email.sh newuser@example.com strongpassword 1G 1000
 ```
 
 **Create new email with unlimited quota:**

@@ -5,5 +5,10 @@ mail-data/
 mail-logs/
 mail-state/
 postgresql/
-config/
+config/*
+!config/rspamd/
+config/rspamd/*
+!config/rspamd/override.d/
+config/rspamd/override.d/*
+!config/rspamd/override.d/ratelimit.conf
 certs/
