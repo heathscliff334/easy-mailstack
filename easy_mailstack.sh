@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resolve the directory where this script lives (for calling sibling scripts)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 usage() {
-  cat <<'USAGE'
+  cat <<USAGE
 Usage:
-  ./easy_mailstack.sh --list-email
-  ./easy_mailstack.sh --domain <domain> --list-email
-  ./easy_mailstack.sh --send-test --email <address> --from <sender>
-  ./easy_mailstack.sh --delete-email --email <address>
-  ./easy_mailstack.sh --deactivate-email --email <address>
-  ./easy_mailstack.sh --deactivate-email --email <address> --reactivate
-  ./easy_mailstack.sh --set-quota --email <address> --size <quota>
-  ./easy_mailstack.sh --del-quota --email <address>
+  $0 --list-email
+  $0 --domain <domain> --list-email
+  $0 --create-email --email <address> [--size <quota>]
+  $0 --send-test --email <address> --from <sender>
+  $0 --delete-email --email <address>
+  $0 --deactivate-email --email <address>
+  $0 --deactivate-email --email <address> --reactivate
+  $0 --set-quota --email <address> --size <quota>
+  $0 --del-quota --email <address>
 
 Quota sizes: use M for megabytes, G for gigabytes (e.g. 500M, 1G, 10G)
 USAGE
@@ -22,6 +26,7 @@ USAGE
 DOMAIN=""
 LIST_EMAIL=false
 SEND_TEST=false
+CREATE_EMAIL=false
 DELETE_EMAIL=false
 DEACTIVATE_EMAIL=false
 REACTIVATE=false
@@ -49,6 +54,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --send-test)
       SEND_TEST=true
+      shift
+      ;;
+    --create-email)
+      CREATE_EMAIL=true
       shift
       ;;
     --delete-email)
@@ -100,8 +109,31 @@ fetch_emails() {
   }
 }
 
-if [[ -z "$DOMAIN" && ! $LIST_EMAIL && ! $SEND_TEST && ! $DELETE_EMAIL && ! $DEACTIVATE_EMAIL && ! $SET_QUOTA && ! $DEL_QUOTA ]]; then
+# Show usage if no action was specified
+if [[ "$LIST_EMAIL" == "false" && "$SEND_TEST" == "false" && "$CREATE_EMAIL" == "false" \
+   && "$DELETE_EMAIL" == "false" && "$DEACTIVATE_EMAIL" == "false" \
+   && "$SET_QUOTA" == "false" && "$DEL_QUOTA" == "false" && -z "$DOMAIN" ]]; then
   usage
+fi
+
+if $CREATE_EMAIL; then
+  if [[ ! -f "$SCRIPT_DIR/create_email.sh" ]]; then
+    echo "Error: create_email.sh not found in $SCRIPT_DIR"
+    exit 1
+  fi
+  # Build arguments for create_email.sh
+  create_args=()
+  if [[ -n "$EMAIL_ARG" ]]; then
+    create_args+=("$EMAIL_ARG")
+    # Prompt for password
+    read -s -p "Enter password for $EMAIL_ARG: " password
+    echo ""
+    create_args+=("$password")
+    # Add quota if specified, default to 0 (unlimited)
+    create_args+=("${SIZE_ARG:-0}")
+  fi
+  # Call create_email.sh (no args = interactive mode)
+  exec "$SCRIPT_DIR/create_email.sh" "${create_args[@]+${create_args[@]}}"
 fi
 
 if $SEND_TEST; then
